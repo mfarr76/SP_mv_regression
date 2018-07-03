@@ -1,7 +1,7 @@
 rm(list = ls())
 
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/daily_tables.RData")
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/string.RData")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rta_rf.RData")
 
 ##install package if it is not already installed========================================
 list.of.packages <- c("dplyr", "tibble")
@@ -51,18 +51,23 @@ date.cols <- c(datetime.cols,date.cols)
 
 join[,char.cols] <- lapply(join[,char.cols] , factor)
 join[,date.cols] <- lapply(join[,date.cols] , factor)
+join$cluster <- as.factor(gsub("\\*","", join$cluster))
 
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
+
+
 
 ##make friendly column name
 response <- make.names(response)
 
 
-df <- train[response]
+df <- join[response]
+df$LEASE <- join["LEASE"]
+
 for(i in 1:nrow(output))
 {
-  idx <- train[which(colnames(train)==as.character(output[i,1]))]
+  idx <- join[which(colnames(join)==as.character(output[i,1]))]
   df <- cbind(df, idx)
 }
 
@@ -72,17 +77,18 @@ df <- na.omit(df)
 ##split data into train/test===============================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
-trainRow <- sample.int(n = nrow(join), size = floor(.75*nrow(join)), replace = F)
+trainRow <- sample.int(n = nrow(df), size = floor(.75*nrow(df)), replace = F)
 
 train <- df[trainRow, ] #create train set
 test <- df[-trainRow, ] #create test set
 
 
 #build formula
-form <- as.formula(paste(response,'~.'))
+form <- as.formula(paste(response,'~.')) #build formula
 
-obj <- rfsrc(form,data = train,ntree=20, 
-             importance=TRUE, tree.err=TRUE)
+traina <- train[, -2]
+
+obj <- rfsrc(form, data = train[-2],ntree=20, importance=TRUE, tree.err=TRUE)
 
 #create Variable Importance table
 VarImportance<-NULL
@@ -111,8 +117,8 @@ if(treeType=="Regression"){
 
 pd <- predict.rfsrc(obj, test)
 
-PredictedValues <- data.frame(test[response], pd$predicted)
-colnames(PredictedValues) <- c("actual", "predicted")
+PredictedValues <- data.frame(test$LEASE,test[response], pd$predicted)
+colnames(PredictedValues) <- c("LEASE","actual", "predicted")
 
 
 rmse <- sqrt(mean((pd$yvar - pd$predicted)^2, na.rm = TRUE))
