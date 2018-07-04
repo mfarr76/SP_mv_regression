@@ -41,7 +41,7 @@ join[,date.cols] <- lapply(join[,date.cols] , factor)
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
-join$cluster <- as.factor(gsub("\\*","", join$cluster))
+join$cluster_proppant <- as.factor(gsub("\\*","", join$cluster_proppant))
 
 ##make friendly column name
 response <- make.names(response)
@@ -116,15 +116,41 @@ MAE <- mean(abs(lm.predict$predicted - lm.predict$actual), na.rm = TRUE)
 error_lm <- data.frame(RMSE, MAE)
 
 
+join1 <- join %>%
+  filter(!is.na(join[response]))
 
 
 
+#sapply(join1, function(x) sum(is.na(x)))
+
+na_count <- sapply(df, function(y) sum(is.na(y)))
+(na_percent <- data.frame(na_count)/nrow(df))
+#names(public[,na_percent<0.95])
+#training_remove_sparse_records<-public[,na_percent<0.95]
+join1 <- join1[,na_percent==0]
+
+numericVars <- which(sapply(join1, is.numeric)) #index vector numeric variables
+join1_num <- join1[, numericVars]
+join1_num <- join1_num[, -c(1:7, 9:10)]
+names(join1_num)
+join1_num$model_H <- NULL
+
+mod <- lm(form, join1_num)
+
+step_back_Mod <- step(mod , direction = "backward")
+
+df <- df %>% select_if(is.numeric)
+
+summary(mod <- lm(form, df))
+
+step_back_Mod <- step(mod , direction = "backward")
+step_forward_Mod <- step(mod, direction = "forward")
+
+summary(step_back_Mod)
+summary(step_forward_Mod)
 
 
-
-
-
-
+##not currently using
 plot <- RGraph(print(ggplot(test, aes_string(x = test$actual), y = names(test["pred.lm"]))) + 
                        geom_point() +
                        stat_smooth(method = "lm", col = "blue") +
@@ -137,6 +163,11 @@ plot <- RGraph(print(ggplot(test, aes_string(x = test$actual), y = names(test["p
                data = c("mod", "test"),
                packages = c("ggplot2"),
                height = 300, width = 480)
+
+
+
+
+
 
 
 

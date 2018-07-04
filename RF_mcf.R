@@ -1,6 +1,6 @@
 rm(list = ls())
 
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/daily_tables.RData")
+#load("C:/Users/mfarr/Documents/R_files/Spotfire.data/daily_tables.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rta_rf.RData")
 
 ##install package if it is not already installed========================================
@@ -29,6 +29,8 @@ suppressPackageStartupMessages
 
 library(dplyr, warn.conflicts = FALSE)
 library(randomForestSRC, warn.conflicts = FALSE)
+library('corrplot') # visualisation
+
 
 ##input parameters
 join
@@ -51,7 +53,7 @@ date.cols <- c(datetime.cols,date.cols)
 
 join[,char.cols] <- lapply(join[,char.cols] , factor)
 join[,date.cols] <- lapply(join[,date.cols] , factor)
-join$cluster <- as.factor(gsub("\\*","", join$cluster))
+join$cluster_proppant <- as.factor(gsub("\\*","", join$cluster_proppant))
 
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
@@ -133,9 +135,44 @@ TimeStamp=paste(date(),Sys.timezone())
 tdir = 'C:/Users/MFARR/Documents/R_files/Spotfire.data' # place to store diagnostics if it exists (otherwise do nothing)
 if(file.exists(tdir) && file.info(tdir)$isdir) suppressWarnings(try(save(list=ls(), file=paste(tdir,'/string.RData',sep=''), RFormat=T )))
 
+##testing================================================================
+
+join1 <- join %>%
+  filter(!is.na(join[response]))
+
+sapply(join1, function(x) sum(is.na(x)))
+
+na_count <- sapply(join1, function(y) sum(is.na(y)))
+(na_percent <- data.frame(na_count)/nrow(join1))
+#names(public[,na_percent<0.95])
+#training_remove_sparse_records<-public[,na_percent<0.95]
+join1 <- join1[,na_percent==0]
+
+numericVars <- which(sapply(join1, is.numeric)) #index vector numeric variables
+join1_num <- join1[, numericVars]
+join1_num$model_H <- NULL
+
+data.frame(row = cumsum(rep(1, ncol(join1))), class = sapply(join1, class))
 
 
-make.names(colnames(geo))
+(highCor <- names(join1_num[,findCorrelation(abs(cor(join1_num)), 0.8)]))
+correlate <- cor(join1_num, use = "everything", method = "pearson")
+corrplot(correlate, type = "lower", sig.level = 0.01, insig = "blank")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
