@@ -35,6 +35,7 @@ library('corrplot') # visualisation
 ##input parameters
 join
 input
+ntree
 
 treeType <- "Regression"
 
@@ -58,8 +59,6 @@ join$cluster_proppant <- as.factor(gsub("\\*","", join$cluster_proppant))
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
-
-
 ##make friendly column name
 response <- make.names(response)
 
@@ -79,7 +78,7 @@ df <- na.omit(df)
 ##split data into train/test===============================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
-trainRow <- sample.int(n = nrow(df), size = floor(.75*nrow(df)), replace = F)
+trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
 
 train <- df[trainRow, ] #create train set
 test <- df[-trainRow, ] #create test set
@@ -90,7 +89,7 @@ form <- as.formula(paste(response,'~.')) #build formula
 
 traina <- train[, -2]
 
-obj <- rfsrc(form, data = train[-2],ntree=20, importance=TRUE, tree.err=TRUE)
+obj <- rfsrc(form, data = train[-2],ntree=ntree, importance=TRUE, tree.err=TRUE)
 
 #create Variable Importance table
 VarImportance<-NULL
