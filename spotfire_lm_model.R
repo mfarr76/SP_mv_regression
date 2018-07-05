@@ -3,14 +3,17 @@ rm(list = ls())
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/lm.RData")
 
 
+
+
 ##modeling
 #library(caret, warn.conflicts = FALSE)
 library(dplyr, warn.conflicts = FALSE)
 library(broom, warn.conflicts = FALSE)
 library(olsrr, warn.conflicts = FALSE)
-#library(RinR, warn.conflicts = FALSE)
+library(RinR, warn.conflicts = FALSE)
+library(leaps, warn.conflicts = FALSE)
 #library(ggplot2, warn.conflicts = FALSE)
-#pushPATH("C:/Program Files/R/R-3.4.4/bin")
+pushPATH("C:/Program Files/R/R-3.5.0/bin")
 
 
 #input parameters=========================================================================
@@ -46,7 +49,7 @@ output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
 df <- join[response]
-df$LEASE <- join["LEASE"]
+df$LEASE <- join$LEASE
 
 for(i in 1:nrow(output))
 {
@@ -196,6 +199,11 @@ regsub <- regsubsets(form, data = train[-2],
 plot(regsub, scale = "adjr2", main = "Adjusted R2")
 
 
+plot <- RinR::RGraph(print(plot(regsub, scale = "adjr2", main = "Adjusted R2")), 
+                     display = FALSE,
+                     data = c("dplry","regsub"),
+                     packages = c("leaps"),
+                     height = 1500, width = 2000)
 
 
 

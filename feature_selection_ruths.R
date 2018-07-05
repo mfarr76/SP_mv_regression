@@ -23,6 +23,9 @@ install_load <- function (package1, ...)  {
   } 
 }
 
+isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
+
+
 sapply(well, function(x) sum(is.na(x)))
 
 install_load('party')
