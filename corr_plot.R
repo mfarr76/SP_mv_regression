@@ -30,7 +30,7 @@ df <- join %>%
   filter(!is.na(join[response]))
 
 na_count <- sapply(df, function(y) sum(is.na(y)))
-(na_percent <- data.frame(na_count)/nrow(df))
+(na_percent <- data.frame(na_count/nrow(df)))
 #names(public[,na_percent<0.95])
 #training_remove_sparse_records<-public[,na_percent<0.95]
 df <- df[,na_percent==0]
@@ -38,6 +38,8 @@ df <- df[,na_percent==0]
 numericVars <- which(sapply(df, is.numeric)) #index vector numeric variables
 df <- df[, numericVars]
 df$model_H <- NULL
+
+highCor <- names(df[,findCorrelation(abs(cor(df)), 0.85)])
 
 library(corrplot)
 
@@ -47,12 +49,17 @@ correlate <- cor( df, use = "everything" )
 corr_plot<- RGraph(print(corrplot(correlate, method="circle", type="lower",  
                                   sig.level = 0.01, insig = "blank")), 
                    display = FALSE,
-                   data = c("df"),
+                   data = c("correlate"),
                    packages = c("corrplot"), 
                    height = 400, width = 600)
 
 
 corrplot(correlate, method="circle", type="lower",  
          sig.level = 0.01, insig = "blank")
+
+cor_matrix<-abs(cor(df))
+diag(cor_matrix)<-0
+library(corrplot)
+corrplot(cor_matrix, method="square", type = "lower")
 
 

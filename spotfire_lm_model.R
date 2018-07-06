@@ -3,17 +3,16 @@ rm(list = ls())
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/lm.RData")
 
 
-
-
 ##modeling
 #library(caret, warn.conflicts = FALSE)
 library(dplyr, warn.conflicts = FALSE)
 library(broom, warn.conflicts = FALSE)
 library(olsrr, warn.conflicts = FALSE)
-library(RinR, warn.conflicts = FALSE)
+#library(RinR, warn.conflicts = FALSE)
 library(leaps, warn.conflicts = FALSE)
+library(MASS, warn.conflicts = FALSE)
 #library(ggplot2, warn.conflicts = FALSE)
-pushPATH("C:/Program Files/R/R-3.5.0/bin")
+#pushPATH("C:/Program Files/R/R-3.5.0/bin")
 
 
 #input parameters=========================================================================
@@ -39,9 +38,13 @@ datetime.cols <- unlist(names(types[types=='c("POSIXct", "POSIXt")']))
 date.cols <- unlist(names(types[types=='Date']))
 date.cols <- c(datetime.cols,date.cols)
 
-join[,char.cols] <- lapply(join[,char.cols] , factor)
+join[,char.cols] <- lapply(join[,char.cols] , character)
 join[,date.cols] <- lapply(join[,date.cols] , factor)
-#join$cluster_proppant <- as.factor(gsub("\\*","", join$cluster_proppant))
+
+if("ProdYear" %in% cols) {
+  join$ProdYear <- as.factor(join$ProdYear)
+}
+
 
 ##make data table from user input========================================================
 
@@ -59,15 +62,18 @@ for(i in 1:nrow(output))
 
 #sapply(df, function(x) sum(is.na(x)))
 
-df <- na.omit(df)
+df <- na.omit(df) 
+  
+df <- df[sapply(df, function(x) length(levels(x)) != 1)]
+
 
 ##split data into train/test===============================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
 trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
 
-train <- df[trainRow, ] #create train set
-test <- df[-trainRow, ] #create test set
+train <- droplevels(df[trainRow, ])# %>% droplevels() #create train set
+test <- droplevels(df[-trainRow, ])# %>% droplevels() #create test set
 
 
 
@@ -106,7 +112,7 @@ lm.stats <- tidy(mod) #stats from lm model
 aug.stats <- augment(mod) #stats from lm model
 pred.lm <- predict(mod, test[-2])
 
-length(mod$coefficients) > mod$rank
+#length(mod$coefficients) > mod$rank
 
 lm.predict <- test$LEASE
 lm.predict <- cbind(lm.predict, data.frame(actual = test[response], predicted = pred.lm))
@@ -129,15 +135,19 @@ if(file.exists(tdir) && file.info(tdir)$isdir) suppressWarnings(try(save(list=ls
 
 data.frame(row = cumsum(rep(1, ncol(df))), class = sapply(df, class))
 
-sapply(df, function(x) length(levels(x)))
+train %>% select_if(is.factor) %>%
+  sapply(levels)
 
-join1 <- join %>%
-  filter(!is.na(join[response]))
+#sapply(df, function(x) length(levels(x)))
 
+dt <- join %>%
+  filter(!is.na(join[response])) %>%
+  mutate(cluster = as.character(cluster)) %>%
+  select(AcK_mbt_EarlyTime, cluster, Develop, Zone)
 
-#sapply(join1, function(x) sum(is.na(x)))
+sapply(dt, function(x) sum(is.na(x)))
 
-
+mod_lm <- lm(form, dt)
 
 na_count <- sapply(df, function(y) sum(is.na(y)))
 (na_percent <- data.frame(na_count)/nrow(df))
@@ -147,7 +157,6 @@ join1 <- join1[,na_percent==0]
 
 numericVars <- which(sapply(join1, is.numeric)) #index vector numeric variables
 join1_num <- join1[, numericVars]
-join1_num <- join1_num[, -c(1:7, 9:10)]
 names(join1_num)
 join1_num$model_H <- NULL
 
@@ -171,11 +180,16 @@ plot(mod)
 autoplot(lm(form, train[-2]))
 
 
+cl <- makeCluster(2, type = "SOCK")
+registerDoSNOW(cl)
+
 k <- ols_step_all_possible(mod)
 plot(k)
 p <- ols_step_best_subset(mod)
 cl <- ols_coll_diag(mod)
 data.frame(cl[[1]])
+
+stopCluster(cl)
 
 k <- ols_step_backward_p(lm(AcK_mbt_EarlyTime ~ VClayCALC + PermCALC + RHOBCALC, train[-2]))
 k <- ols_step_best_subset(lm(AcK_mbt_EarlyTime ~ VClayCALC + PermCALC + RHOBCALC, train[-2]))           
@@ -196,6 +210,17 @@ regsub <- regsubsets(form, data = train[-2],
              force.in = NULL, force.out = NULL,
              method = "exhaustive")
 
+reg.summary <- summary(regsub)
+
+library(ggvis)
+rsq <- as.data.frame(reg.summary$adjr2)
+names(rsq) <- "R2"
+rsq %>% 
+  ggvis(x=~ c(1:nrow(rsq)), y=~R2 ) %>%
+  layer_points(fill = ~ R2 ) %>%
+  add_axis("y", title = "R2") %>% 
+  add_axis("x", title = "Number of variables")
+
 plot(regsub, scale = "adjr2", main = "Adjusted R2")
 
 
@@ -206,7 +231,28 @@ plot <- RinR::RGraph(print(plot(regsub, scale = "adjr2", main = "Adjusted R2")),
                      height = 1500, width = 2000)
 
 
+aic_b <- stepAIC(mod, direction = "both")
+aic <- stepAIC(mod, direction = "backward")
+aic <- stepAIC(mod, direction = "forward")
+sep <- step(mod, direction = "backward")
+sep <- step(mod, direction = "forward")
+summary(aic)
+aug.stats <- augment(aic) #stats from lm model
+lm.stats <- tidy(aic) #stats from lm model
+aug.stats <- augment(mod) #stats from lm model
+glance(aic)
 
+library(ggplot2)
+td <- tidy(aic, conf.int = TRUE)
+ggplot(td[-1,], aes(estimate, term, color = term)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  geom_vline(xintercept = 0)
+
+ggplot(td[-1,], aes(term, estimate))+
+  geom_point()+
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high))+
+  labs(title = "Coefficients of a linear regression model")
 
 
 
