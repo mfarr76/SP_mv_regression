@@ -52,7 +52,7 @@ output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
 df <- join[response]
-df$LEASE <- join$LEASE
+#df$LEASE <- join$LEASE
 
 for(i in 1:nrow(output))
 {
@@ -75,6 +75,7 @@ trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace =
 train <- droplevels(df[trainRow, ])# %>% droplevels() #create train set
 test <- droplevels(df[-trainRow, ])# %>% droplevels() #create test set
 
+write.csv(train, file = "train.csv")
 
 
 ##remove from sf===========================================================================
@@ -124,6 +125,12 @@ RMSE <- sqrt(mean((lm.predict$predicted - lm.predict$actual)^2, na.rm = TRUE))
 MAE <- mean(abs(lm.predict$predicted - lm.predict$actual), na.rm = TRUE)
 
 error_lm <- data.frame(RMSE, MAE)
+
+
+library(MASS)
+aic <- stepAIC(mod, direction = "backward")
+
+bwards <- data.frame(Predictors = colnames(aic$model[-1]))
 
 
 ##end of fxn===================================================================================
@@ -231,6 +238,7 @@ plot <- RinR::RGraph(print(plot(regsub, scale = "adjr2", main = "Adjusted R2")),
                      height = 1500, width = 2000)
 
 
+
 aic_b <- stepAIC(mod, direction = "both")
 aic <- stepAIC(mod, direction = "backward")
 aic <- stepAIC(mod, direction = "forward")
@@ -254,5 +262,13 @@ ggplot(td[-1,], aes(term, estimate))+
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high))+
   labs(title = "Coefficients of a linear regression model")
 
+set.seed(1234)
+mod_lm <- train(form, train[-2], method = 'lm')
+
+body(predict.lm)
+
+ncol(train[-2]
+
+length(mod$coefficients) > mod$rank
 
 

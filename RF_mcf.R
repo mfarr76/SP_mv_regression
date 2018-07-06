@@ -54,7 +54,11 @@ date.cols <- c(datetime.cols,date.cols)
 
 join[,char.cols] <- lapply(join[,char.cols] , factor)
 join[,date.cols] <- lapply(join[,date.cols] , factor)
-join$cluster_proppant <- as.factor(gsub("\\*","", join$cluster_proppant))
+
+
+if("ProdYear" %in% cols) {
+  join$ProdYear <- as.factor(join$ProdYear)
+}
 
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"

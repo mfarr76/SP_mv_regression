@@ -5,7 +5,7 @@ load("C:/Users/mfarr/Documents/R_files/Spotfire.data/lm_access.RData")
 
 AccessFilePath <- "C:/Users/mfarr/Documents/Spotfire.accdb"
 
-suppressWarnings(library(dplry, warn.conflicts = FALSE))
+suppressWarnings(library(dplyr, warn.conflicts = FALSE))
 suppressWarnings(library(RODBC, warn.conflicts = FALSE))
 
 
