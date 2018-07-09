@@ -1,16 +1,18 @@
 rm(list = ls())
 
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/lm.RData")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 
 
 ##modeling
 #library(caret, warn.conflicts = FALSE)
-library(dplyr, warn.conflicts = FALSE)
+library(MASS, warn.conflicts = FALSE)
+suppressWarnings(library(dplyr, warn.conflicts = FALSE))
 library(broom, warn.conflicts = FALSE)
 library(olsrr, warn.conflicts = FALSE)
 #library(RinR, warn.conflicts = FALSE)
 library(leaps, warn.conflicts = FALSE)
-library(MASS, warn.conflicts = FALSE)
+
 #library(ggplot2, warn.conflicts = FALSE)
 #pushPATH("C:/Program Files/R/R-3.5.0/bin")
 
@@ -20,11 +22,42 @@ join  #data table
 input 
 split ##train / test split
 
+##functions===============================================================================
+findCorrelation_fast <- function(x, cutoff = .90, verbose = FALSE){
+  if(any(!complete.cases(x)))
+    stop("The correlation matrix has some missing values.")
+  averageCorr <- colMeans(abs(x))
+  averageCorr <- as.numeric(as.factor(averageCorr))
+  x[lower.tri(x, diag = TRUE)] <- NA
+  combsAboveCutoff <- which(abs(x) > cutoff)
+  
+  colsToCheck <- ceiling(combsAboveCutoff / nrow(x))
+  rowsToCheck <- combsAboveCutoff %% nrow(x)
+  
+  colsToDiscard <- averageCorr[colsToCheck] > averageCorr[rowsToCheck]
+  rowsToDiscard <- !colsToDiscard
+  
+  if(verbose){
+    colsFlagged <- pmin(ifelse(colsToDiscard, colsToCheck, NA),
+                        ifelse(rowsToDiscard, rowsToCheck, NA), na.rm = TRUE)
+    values <- round(x[combsAboveCutoff], 3)
+    cat('\n',paste('Combination row', rowsToCheck, 'and column', colsToCheck,
+                   'is above the cut-off, value =', values,
+                   '\n \t Flagging column', colsFlagged, '\n'
+    ))
+  }
+  
+  deletecol <- c(colsToCheck[colsToDiscard], rowsToCheck[rowsToDiscard])
+  deletecol <- unique(deletecol)
+  deletecol
+}
+
 ##data type cleanup=======================================================================
 
 #sapply(df, function(x) sum(is.na(x)))
 
 attributes(join)$na.action <- NULL
+
 
 #change the name of the Response variable to be R friendly
 colnames(join) <- make.names( colnames(join) )
@@ -52,7 +85,7 @@ output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
 df <- join[response]
-#df$LEASE <- join$LEASE
+
 
 for(i in 1:nrow(output))
 {
@@ -62,56 +95,58 @@ for(i in 1:nrow(output))
 
 #sapply(df, function(x) sum(is.na(x)))
 
-df <- na.omit(df) 
-  
-df <- df[sapply(df, function(x) length(levels(x)) != 1)]
+df <- df %>% filter(!is.na(.[response]))
+
+highCor <- df %>% #find high cor columns
+  na.omit() %>%
+  select(-one_of(response)) %>%
+  select_if(is.numeric) %>%
+  select(one_of(names(.[findCorrelation_fast(abs(cor(.)), 0.8)]))) %>%
+  colnames()
+#df2<- df %>%
+#  select_if(is.numeric) %>%
+#  na.omit(.)
+
+#highCor2 <- names(df2[,findCorrelation_fast(abs(cor(df2)), 0.85)])
+#highCor <- names(df[findCorrelation_fast(abs(cor(df)), 0.85)])
+
+##remove multicollinearity columns
+df <- bind_cols(join %>% 
+                  filter(!is.na(join[response])) %>% 
+                  select(LEASE), 
+                df %>%
+                   select_if(is.numeric) %>%
+                  select(-one_of(highCor))) %>%
+  na.omit() %>% droplevels()
+
+attributes(df)$na.action <- NULL #remove attribute from data.table
+df <- df[sapply(df, function(x) length(levels(x)) != 1)] #remove factors that only have 1 level
+
+#highCor2 <- names(df[,findCorrelation_fast(abs(cor(df)), 0.8)])
+#df <- df %>% select(-one_of(highCor2))
 
 
-##split data into train/test===============================================================
+##split data into train/test=================================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
 trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
 
-train <- droplevels(df[trainRow, ])# %>% droplevels() #create train set
-test <- droplevels(df[-trainRow, ])# %>% droplevels() #create test set
-
-write.csv(train, file = "train.csv")
+train <- droplevels(df[trainRow, ]) #create train set
+test <- droplevels(df[-trainRow, ]) #create test set
 
 
-##remove from sf===========================================================================
 
-##create a for loop to check the distribution of train/test set
-dtlist <- list(df, train, test)                                 
-dtname <- c("df", "train", "test")
+#write.csv(train, file = "train.csv")
 
-#i <- 3
-metric <- data.frame()  #create an empty data.frame to hold each loop
-for(i in 1:length(dtlist)){
-  dt <- data.frame(dtlist[i])
-  dt_tbl <- data.frame(tableName = dtname[i]);
-  dt_tbl$wellcount <- nrow(dt);   
-  dt_tbl$mean <- mean(dt[[response]], na.rm = TRUE);   
-  dt_tbl$median <- median(dt[[response]], na.rm = TRUE);
-  dt_tbl$variance <- var(dt[[response]], na.rm = TRUE);
-  dt_tbl$sd <- sd(dt[[response]], na.rm = TRUE);
-  dt_tbl$P10 <- quantile(dt[[response]], probs = (0.90), na.rm = TRUE);
-  dt_tbl$P90 <- quantile(dt[[response]], probs = (0.10), na.rm = TRUE);
-  #df_tbl$SoPhiH <- mean(df$SoPhiH_LEF, na.rm = TRUE)
-  #df_tbl$tvd <- mean(df$TotalDepthTVD, na.rm = TRUE)
-  metric <- rbind(metric, dt_tbl)#store the results of each loop
-  #rownames(metric) <- dfname[i]
-  #print(metric)
-}
 
-#sapply(mod_tbl, function(x) sum(is.na(x)))
 
 ##build lm model=============================================================================
 
 form <- as.formula(paste(response,'~.')) #build formula
-mod <- lm(form, train[-2]) #lm model
+mod <- lm(form, train[-1]) #lm model
 lm.stats <- tidy(mod) #stats from lm model
 aug.stats <- augment(mod) #stats from lm model
-pred.lm <- predict(mod, test[-2])
+pred.lm <- predict(mod, test[-1])
 
 #length(mod$coefficients) > mod$rank
 
@@ -127,10 +162,14 @@ MAE <- mean(abs(lm.predict$predicted - lm.predict$actual), na.rm = TRUE)
 error_lm <- data.frame(RMSE, MAE)
 
 
-library(MASS)
-aic <- stepAIC(mod, direction = "backward")
+#library(MASS)
+aic <- stepAIC(mod, direction = "forward")
 
-bwards <- data.frame(Predictors = colnames(aic$model[-1]))
+bwards <- sort(colnames(aic$model[-1]))
+
+arrange(bwards)
+
+
 
 
 ##end of fxn===================================================================================

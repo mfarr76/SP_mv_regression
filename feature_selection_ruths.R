@@ -1,6 +1,7 @@
 rm(list = ls())
 
-well <- read.csv("feature.csv")
+#well <- read.csv("feature.csv")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/corr_plot.RData")
 
 #making suredplyr is installed
 install_load <- function (package1, ...)  {  
@@ -31,11 +32,17 @@ sapply(well, function(x) sum(is.na(x)))
 install_load('party')
 #library(caret)
 options(StringsAsFactors=TRUE)
-well<-well[complete.cases(well),]
+
+#change the name of the Response variable to be R friendly
+colnames(join) <- make.names( colnames(join) )
+well <- join
+#well<-join[,complete.cases(join)]
 wellid<-well[,1]
 well<-well[,-1] ##nice way to create table without your response variable
 well[,1]<-as.factor(well[,1])
-fCtrl <-  cforest(EURCategory ~ . , data= well, control=cforest_unbiased(mtry=2,ntree=50))
+well<-select_if(well, is.numeric)
+
+fCtrl <-  cforest(GasEURBCF ~ . , data= well, control=cforest_unbiased(mtry=2,ntree=50))
 wello <-data.frame("mean decrease accuracy"=varimp(fCtrl))
 wello<-data.frame(Features= rownames(wello),wello)
 
