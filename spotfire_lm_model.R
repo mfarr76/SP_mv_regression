@@ -110,14 +110,29 @@ highCor <- df %>% #find high cor columns
 #highCor2 <- names(df2[,findCorrelation_fast(abs(cor(df2)), 0.85)])
 #highCor <- names(df[findCorrelation_fast(abs(cor(df)), 0.85)])
 
-##remove multicollinearity columns
-df <- bind_cols(join %>% 
-                  filter(!is.na(join[response])) %>% 
-                  select(LEASE), 
-                df %>%
-                   select_if(is.numeric) %>%
-                  select(-one_of(highCor))) %>%
-  na.omit() %>% droplevels()
+multi.ONOFF <- "ON"
+
+if(multi.ONOFF == "ON"){
+  
+  ##remove multicollinearity columns
+  df <- bind_cols(join %>% 
+                    filter(!is.na(join[response])) %>% 
+                    select(LEASE), 
+                  df %>%
+                    #select_if(is.numeric) %>%
+                    select(-one_of(highCor))) %>%
+    na.omit() %>% droplevels()
+  
+}else{
+  ##remove multicollinearity columns
+  df <- bind_cols(join %>% 
+                    filter(!is.na(join[response])) %>% 
+                    select(LEASE), 
+                  df) %>%
+    na.omit() %>% droplevels()
+}
+
+
 
 attributes(df)$na.action <- NULL #remove attribute from data.table
 df <- df[sapply(df, function(x) length(levels(x)) != 1)] #remove factors that only have 1 level
