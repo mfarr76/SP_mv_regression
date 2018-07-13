@@ -7,6 +7,13 @@ response <- "GasEURBCF"
 suppressWarnings(library(dplyr, warn.conflicts = FALSE))
 suppressWarnings(library(corrplot, warn.conflicts = FALSE))
 
+suppressWarnings(library(RinR, warn.conflicts = FALSE))
+
+
+ActualPathToOpenSourceR <- "C:/Program Files/R/R-3.5.0/bin/R.exe"
+
+options( RinR_R_FULL_PATH = ActualPathToOpenSourceR )
+
 
 ##data prep=============================================================
 df <- join %>%

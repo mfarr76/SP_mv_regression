@@ -10,7 +10,7 @@ library(MASS, warn.conflicts = FALSE)
 suppressWarnings(library(dplyr, warn.conflicts = FALSE))
 library(broom, warn.conflicts = FALSE)
 library(olsrr, warn.conflicts = FALSE)
-#library(RinR, warn.conflicts = FALSE)
+library(RinR, warn.conflicts = FALSE)
 library(leaps, warn.conflicts = FALSE)
 
 #library(ggplot2, warn.conflicts = FALSE)
@@ -185,6 +185,15 @@ bwards <- sort(colnames(aic$model[-1]))
 arrange(bwards)
 
 
+par(mfrow=c(2,2))
+mod.plot <- plot(mod)
+
+lm.mod.plot<- RGraph(print(plot(mod)), 
+                   display = FALSE,
+                   data = c("mod"),
+                   packages = c("dplyr"), 
+                   height = 400, width = 600)
+
 
 
 ##end of fxn===================================================================================
@@ -240,6 +249,7 @@ plot(mod)
 
 autoplot(lm(form, train[-2]))
 
+library(olsrr, warn.conflicts = FALSE)
 
 cl <- makeCluster(2, type = "SOCK")
 registerDoSNOW(cl)
@@ -247,6 +257,7 @@ registerDoSNOW(cl)
 k <- ols_step_all_possible(mod)
 plot(k)
 p <- ols_step_best_subset(mod)
+plot(p)
 cl <- ols_coll_diag(mod)
 data.frame(cl[[1]])
 
@@ -265,7 +276,7 @@ mod <- lm(form, df)
 
 library(leaps)
 
-regsub <- regsubsets(form, data = train[-2],
+regsub <- regsubsets(form, data = train[-1],
              nbest = 1,       # 1 best model for each number of predictors
              nvmax = NULL,    # NULL for no limit on number of variables
              force.in = NULL, force.out = NULL,
@@ -320,8 +331,6 @@ set.seed(1234)
 mod_lm <- train(form, train[-2], method = 'lm')
 
 body(predict.lm)
-
-ncol(train[-2]
 
 length(mod$coefficients) > mod$rank
 
