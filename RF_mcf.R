@@ -139,6 +139,9 @@ trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace =
 train <- droplevels(df[trainRow, ]) #create train set
 test <- droplevels(df[-trainRow, ]) #create test set
 
+train <- train[sapply(train, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
+test <- test[sapply(test, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
+
 
 ##build lm model=============================================================================
 form <- as.formula(paste(response,'~.')) #build formula

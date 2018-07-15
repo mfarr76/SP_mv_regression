@@ -54,15 +54,18 @@ findCorrelation_fast <- function(x, cutoff = .90, verbose = FALSE){
 
 ##data type cleanup=======================================================================
 
-#sapply(df, function(x) sum(is.na(x)))
-
-attributes(join)$na.action <- NULL
-
-
 #change the name of the Response variable to be R friendly
 colnames(join) <- make.names( colnames(join) )
 cols <- colnames(join)
 response <- make.names(response)
+
+features_na <- colnames(join)[unique(which(is.na(join), arr.ind = TRUE)[,2])]
+features <- colnames(join[,!(colnames(join)%in% c("Uncertainity.Index"))])##exclude a colnames
+features <- features[!(features %in% features_na)]
+target <- response
+
+
+
 
 #get the columns which are character type and date or date-time type
 types <- sapply(join[,cols],class)
@@ -85,11 +88,11 @@ output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
 df <- join[response]
-
+make.names(output[9,1])
 
 for(i in 1:nrow(output))
 {
-  idx <- join[which(colnames(join)==as.character(output[i,1]))]
+  idx <- join[which(colnames(join)== make.names(as.character(output[i,1])))]
   df <- cbind(df, idx)
 }
 
@@ -186,13 +189,20 @@ arrange(bwards)
 
 
 par(mfrow=c(2,2))
-mod.plot <- plot(mod)
 
-lm.mod.plot<- RGraph(print(plot(mod)), 
-                   display = FALSE,
-                   data = c("mod"),
-                   packages = c("dplyr"), 
-                   height = 400, width = 600)
+
+graph <- RGraph(
+  {par(mfrow=c(2,2)) 
+    plot(
+      mod)
+    ask=F},
+  display = FALSE,
+  data = c("mod"),
+  packages = c("dplyr"), 
+  height = 400, width = 600)
+
+lm.mod.plot <- as.raw(graph)
+
 
 
 
@@ -254,16 +264,25 @@ library(olsrr, warn.conflicts = FALSE)
 cl <- makeCluster(2, type = "SOCK")
 registerDoSNOW(cl)
 
+t.mod <- lm(AcK_mbt_LateTime ~ StageSpacing + Clusters_1000, df[-1])
+
 k <- ols_step_all_possible(mod)
 plot(k)
 p <- ols_step_best_subset(mod)
 plot(p)
 cl <- ols_coll_diag(mod)
 data.frame(cl[[1]])
+ols_plot_hadi(mod)
+ols_plot_cooksd_bar(mod)
+ols_plot_dfbetas(mod)
+ols_plot_resid_fit(t.mod)
+ols_plot_resid_stand(mod)
 
-stopCluster(cl)
+ols_step_both_p(t.mod)
 
-k <- ols_step_backward_p(lm(AcK_mbt_EarlyTime ~ VClayCALC + PermCALC + RHOBCALC, train[-2]))
+
+
+k <- ols_step_backward_p(lm(AcK_mbt_LateTime ~ StageSpacing, Clusters_1000, train[-1]))
 k <- ols_step_best_subset(lm(AcK_mbt_EarlyTime ~ VClayCALC + PermCALC + RHOBCALC, train[-2]))           
 
 summary(k)
@@ -333,5 +352,22 @@ mod_lm <- train(form, train[-2], method = 'lm')
 body(predict.lm)
 
 length(mod$coefficients) > mod$rank
+
+
+library(lime)
+library(caret)
+
+#mod_lime <- as_regressor(mod)
+rm.mod <- train(form, train[-1], method = 'rf')
+explainer <- lime(train[-1], rm.mod)
+
+explanatory <- explain(test[-1], explainer, n_features = 4)
+
+plot_features(explanatory)
+
+
+
+
+
 
 
