@@ -38,11 +38,14 @@ join <- left_join(geo, rta, by = c("AMAPI" = "API")) %>%
               select(Mesh100_Perc, Mesh3050_Perc, Mesh4070_Perc, Mesh2040_Perc, wellcompletionapi), 
             by = c("AMAPI" = "wellcompletionapi")) %>%
   mutate(spacing_prodyear_bin = case_when(PRODYRAVGWELLSPACING < 200 ~ "200", 
-                                          PRODYRAVGWELLSPACING > 400 | PRODYRAVGWELLSPACING < 600 ~ "400-600", 
-                                          PRODYRAVGWELLSPACING > 600 | PRODYRAVGWELLSPACING < 800 ~ "600-800", 
-                                          PRODYRAVGWELLSPACING > 800 | PRODYRAVGWELLSPACING < 1000 ~ "800-1000",
-                                          PRODYRAVGWELLSPACING > 800 | PRODYRAVGWELLSPACING < 1000 ~ "1000-1200",
-                                          TRUE ~ "1200"))
+                                          PRODYRAVGWELLSPACING > 200 & PRODYRAVGWELLSPACING < 400 ~ "200-400", 
+                                          PRODYRAVGWELLSPACING > 400 & PRODYRAVGWELLSPACING < 600 ~ "400-600", 
+                                          PRODYRAVGWELLSPACING > 600 & PRODYRAVGWELLSPACING < 800 ~ "600-800",
+                                          PRODYRAVGWELLSPACING > 800 & PRODYRAVGWELLSPACING < 1000 ~ "800-1000",
+                                          PRODYRAVGWELLSPACING > 1000 & PRODYRAVGWELLSPACING < 1200 ~ "1000-1200",
+                                          TRUE ~ ">1200"))
+
+join %>% select(LEASE, PRODYRAVGWELLSPACING, spacing_prodyear_bin)
 
 join %>% mutate(spacing = case_when(PRODYRAVGWELLSPACING < 400 ~ "400")) %>%
   select(PRODYRAVGWELLSPACING , spacing) 

@@ -248,8 +248,8 @@ df <- df %>% select_if(is.numeric)
 
 summary(mod <- lm(form, df))
 
-step_back_Mod <- step(mod , direction = "backward")
-step_forward_Mod <- step(mod, direction = "forward")
+step_back_Mod <- step(lm.mod , direction = "backward")
+step_forward_Mod <- step(lm.mod, direction = "forward")
 
 summary(step_back_Mod)
 summary(step_forward_Mod)
@@ -265,6 +265,7 @@ cl <- makeCluster(2, type = "SOCK")
 registerDoSNOW(cl)
 
 t.mod <- lm(AcK_mbt_LateTime ~ StageSpacing + Clusters_1000, df[-1])
+lm.mod <- lm(form, train[-1])
 
 k <- ols_step_all_possible(mod)
 plot(k)

@@ -2,35 +2,25 @@ rm(list = ls())
 
 #load("C:/Users/mfarr/Documents/R_files/Spotfire.data/daily_tables.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rta_rf.RData")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
+
+response <- "AcK_mbt_LateTime"
 
 ##install package if it is not already installed========================================
 list.of.packages <- c("dplyr", "tibble")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages, repos =  "https://mran.revolutionanalytics.com/snapshot/2017-05-01/")
 
-
-
-
-##join adapt rta table======================================================
-names(geo) <- gsub("-","", names(geo))
-names(geo) <- gsub(" ", "_", names(geo))
-names(geo) <- gsub("[()]","", names(geo))
-names(geo) <- gsub("_","", names(geo))
-
-
-join <- left_join(geo, rta, by = c("AMAPI" = "API")) %>%
-  rename(LEF_PER = `%LEF`,
-         UEF_PER = `%UEF`)
-
-##load spotfire below=======================================================
+##load spotfire below===================================================================
 
 
 suppressPackageStartupMessages
 
 library(dplyr, warn.conflicts = FALSE)
-library(randomForestSRC, warn.conflicts = FALSE)
-library('corrplot') # visualisation
-
+#library(randomForestSRC, warn.conflicts = FALSE)
+#library('corrplot') # visualisation
+library(ranger, warn.conflicts = FALSE)
+library(caret, warn.conflicts = FALSE)
 
 ##input parameters
 join
@@ -94,6 +84,7 @@ if("ProdYear" %in% cols) {
   join$ProdYear <- as.factor(join$ProdYear)
 }
 
+#factor.cols <- unlist(names(types[types=='factor']))
 
 ##make data table from user input========================================================
 
@@ -136,30 +127,41 @@ set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
 trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
 
-train <- droplevels(df[trainRow, ]) #create train set
-test <- droplevels(df[-trainRow, ]) #create test set
+RF.Train <- droplevels(df[trainRow, ]) #create train set
+RF.Test <- droplevels(df[-trainRow, ]) #create test set
 
-train <- train[sapply(train, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
-test <- test[sapply(test, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
+RF.Train <- RF.Train[sapply(RF.Train, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
+RF.Test <- RF.Test[sapply(RF.Test, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
 
 
 ##build lm model=============================================================================
 form <- as.formula(paste(response,'~.')) #build formula
 
 
-obj <- rfsrc(form, data = train[-1],ntree=ntree, importance=TRUE, tree.err=TRUE)
+#obj <- rfsrc(form, data = train[-1],ntree=ntree, importance=TRUE, tree.err=TRUE)
+
+##ranger package
+mtry <- ceiling(sqrt(ncol(RF.Train[-1])))
+
+
+set.seed(1234)
+obj <- ranger(form, RF.Train[-1], mtry = mtry, 
+              importance = "permutation", num.trees = 1000)
+
+RF.Train$predict <- obj$predictions
+
 
 #create Variable Importance table
 VarImportance<-NULL
-VarImportance<-obj$importance
+VarImportance<-obj$variable.importance
 
 if(treeType=="Regression"){
-  VarImportance<-cbind(VarImportance,names(obj$importance))
+  VarImportance<-cbind(VarImportance,names(obj$variable.importance))
   colnames(VarImportance)<-c("Importance","Variable")
   VarImportance <- as.data.frame(VarImportance,stringsAsFactors=FALSE)
   VarImportance$Importance <- as.numeric(VarImportance$Importance)
 }else{
-  VarImportance<-cbind(VarImportance,rownames(obj$importance))
+  VarImportance<-cbind(VarImportance,rownames(obj$vaiable.importance))
   colnames(VarImportance)<-c(colnames(obj$importance),"Variable")
   VarImportance <- as.data.frame(VarImportance,stringsAsFactors=FALSE)
   
@@ -169,33 +171,92 @@ if(treeType=="Regression"){
 }
 
 
-#PredictedValues <- data.frame(test[response], obj$predicted)
-#colnames(PredictedValues) <- c("actual", "predicted")
-
-#sapply(test, function(x) sum(is.na(x)))
-
-pd <- predict.rfsrc(obj, test[-1])
-
-PredictedValues <- data.frame(test$LEASE,test[response], pd$predicted)
-colnames(PredictedValues) <- c("LEASE","actual", "predicted")
+pred_rngr <- predictions(predict(obj, RF.Test[-1], num.trees = 1000))
+RF.Test$predict <- predictions(predict(obj, RF.Test[-1], num.trees = 1000))
 
 
-rmse <- sqrt(mean((pd$yvar - pd$predicted)^2, na.rm = TRUE))
-mae <- mean(abs(pd$yvar - pd$predicted), na.rm = TRUE)
+RMSE <- sqrt(mean((RF.Test[[response]] - pred_rngr)^2, na.rm = TRUE))
+MAE <- mean(abs(RF.Test[[response]] - pred_rngr), na.rm = TRUE)
 
 error <- data.frame(RMSE, MAE)
 
+
 #create table with stats for the training data
-Stats<-capture.output(print(obj))
+Stats <- capture.output(print(obj))
+
+
+
 
 
 TimeStamp=paste(date(),Sys.timezone())
 tdir = 'C:/Users/MFARR/Documents/R_files/Spotfire.data' # place to store diagnostics if it exists (otherwise do nothing)
 if(file.exists(tdir) && file.info(tdir)$isdir) suppressWarnings(try(save(list=ls(), file=paste(tdir,'/string.RData',sep=''), RFormat=T )))
 
+##bootstrap==============================================================================
+#i <- 20
+split <- 60
+##create random samples with replacement
+set.seed(1)
+(sam <- sample(c(1:1000), size = 1000, replace=TRUE))
+
+#test
+#sam == 2
+
+##create output placeholder for each loop
+train_mean <- vector("double", 1000) #mean of response variable in train set
+test_mean <- vector("double", 1000) #mean of response variable in test set
+rmse <- vector("double", 1000)  #rmse in units of response variable
+r2_train <- vector("double", 1000) #r2 of the model using the training set
+r2_test <- vector("double", 1000) #r2 fo the model using the test set
+#mod_coef <- matrix(0,1000,16) #matrix to hold coefficients from each loop
+
+for(i in 1:1000){
+  
+  set.seed(sam[i])
+  trainRow <- createDataPartition(df[[response]],  p = split/100, list = FALSE)
+  #trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
+  train <- df[trainRow, ] #create train set
+  test <- df[-trainRow, ] #create test set
+  train_mean[i] <- mean(train[[response]]) #mean of train
+  test_mean[i] <- mean(test[[response]]) #mean of test
+  
+  set.seed(sam[i]) 
+  mod_rf <- ranger(form, train[-1], mtry = mtry, importance = "permutation", num.trees = 1000)
+  pred_rf <- predictions(predict(mod_rf, test[-1], num.trees = 1000))
+  rmse[i] <- sqrt(mean((test[[response]] - pred_rf)^2, na.rm = TRUE)) #calc rmse
+  r2_train[i] <- mod_rf$r.squared #retreive r2 from model
+  r2_test[i] <- cor(pred_rf, test[[response]])^2 #retreive r2 from model
+  
+}
+
+
+##create a histrogram of rmse values with red line as your mean
+hist(rmse, density=35, main = "Test RMSE over 1000 Samples", xlab = "Value of Obtained RMSE", col="blue", border="black")
+abline(v=mean(rmse), lwd=3, col="red")
+
+##create a histrogram of adj r2 values with red line as your mean
+hist(r2_train, density=35, main = "Test R2_Train over 1000 Samples", xlab = "Value of Obtained R2_Train", col="blue", border="black")
+abline(v=mean(r2_train), lwd=3, col="red")
+
+##create a histrogram of adj r2 values with red line as your mean
+hist(r2_test, density=35, main = "Test R2_Test over 1000 Samples", xlab = "Value of Obtained R2_Test", col="blue", border="black")
+abline(v=mean(r2_test), lwd=3, col="red")
+
+##create a histrogram of train_mean values with red line as your mean
+hist(train_mean, density=35, main = "Train_Mean over 1000 Samples", xlab = "Value of Obtained Train_Mean", col="blue", border="black")
+abline(v=mean(train_mean), lwd=3, col="red")
+
+
+##create a histrogram of test_mean values with red line as your mean
+hist(test_mean, density=35, main = "Test Mean over 1000 Samples", xlab = "Value of Obtained Test_Mean", col="blue", border="black")
+abline(v=mean(test_mean), lwd=3, col="red")
+
+
 ##testing================================================================
 
-join1 <- join %>%
+R2(pred_rngr, RF.Test$AcK_mbt_EarlyTime)
+
+objjoin1 <- join %>%
   filter(!is.na(join[response]))
 
 sapply(join1, function(x) sum(is.na(x)))
@@ -217,6 +278,31 @@ data.frame(row = cumsum(rep(1, ncol(join1))), class = sapply(join1, class))
 correlate <- cor(join1_num, use = "everything", method = "pearson")
 corrplot(correlate, type = "lower", sig.level = 0.01, insig = "blank")
 
+##create a for loop to check the distribution of train/test set
+dflist <- list(df, RF.Train, RF.Test)                                 
+dfname <- c("df", "RF.Train", "RF.Test")
+
+##for more information on for loops go to the website below
+#http://r4ds.had.co.nz/iteration.html#for-loops
+
+metric <- data.frame()  #create an empty data.frame to hold each loop
+for(i in 1:length(dflist)){
+  dt <- data.frame(dflist[i])
+  dt_tbl <- data.frame(wellcount = nrow(dt))   
+  dt_tbl$mean <- mean(dt[[response]], na.rm = TRUE)   
+  dt_tbl$median <- median(dt[[response]], na.rm = TRUE)
+  dt_tbl$variance <- var(dt[[response]], na.rm = TRUE)
+  dt_tbl$sd <- sd(dt[[response]], na.rm = TRUE)
+  dt_tbl$P10 <- quantile(dt[[response]], probs = (0.90), na.rm = TRUE)
+  dt_tbl$P90 <- quantile(dt[[response]], probs = (0.10), na.rm = TRUE)
+  #df_tbl$SoPhiH <- mean(df$SoPhiH_LEF, na.rm = TRUE)
+  #df_tbl$tvd <- mean(df$TotalDepthTVD, na.rm = TRUE)
+  metric <- rbind(metric, dt_tbl)#store the results of each loop
+  #rownames(metric) <- dfname[i]
+  #print(metric)
+}
+rownames(metric) <- dfname
+metric
 
 
 
