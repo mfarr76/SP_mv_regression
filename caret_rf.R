@@ -55,6 +55,7 @@ RF.Train %>% select(AcK_mbt_LateTime, spacing_prodyear_bin, effectivelateral, To
 
 set.seed(1234)
 rm.mod <- train(form, RF.Train[-1], method = 'rf', na.action = na.omit, importance =  TRUE)
+ranger.mod <- train(form, RF.Train[-1], method = 'ranger', na.action = na.omit, importance =  TRUE)
 lm.mod <- train(form, RF.Train[-1], method = 'lm', na.action = na.omit, importance =  TRUE)
 rf.imp <- varImp(rm.mod, useModel = TRUE)
 lm.imp <- varImp(lm.mod, useModel = TRUE)

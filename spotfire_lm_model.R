@@ -4,9 +4,12 @@ load("C:/Users/mfarr/Documents/R_files/Spotfire.data/lm.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 
 
+
+isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
+
 ##modeling
 #library(caret, warn.conflicts = FALSE)
-library(MASS, warn.conflicts = FALSE)
+#library(MASS, warn.conflicts = FALSE)
 suppressWarnings(library(dplyr, warn.conflicts = FALSE))
 library(broom, warn.conflicts = FALSE)
 library(olsrr, warn.conflicts = FALSE)

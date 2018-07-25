@@ -16,6 +16,8 @@ if(length(new.packages)) install.packages(new.packages, repos =  "https://mran.r
 
 suppressPackageStartupMessages
 
+isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
+
 library(dplyr, warn.conflicts = FALSE)
 #library(randomForestSRC, warn.conflicts = FALSE)
 #library('corrplot') # visualisation
@@ -62,6 +64,10 @@ findCorrelation_fast <- function(x, cutoff = .90, verbose = FALSE){
 }
 
 
+level_count <- function(table){
+  sum(ifelse(sapply(table, function(x) length(levels(x)) != 1) == FALSE, 1, 0))
+}
+
 
 ##data type cleanup=======================================================================
 
@@ -86,19 +92,29 @@ if("ProdYear" %in% cols) {
 
 #factor.cols <- unlist(names(types[types=='factor']))
 
-##make data table from user input========================================================
-
+##make data table from user input====================================================================
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
+##create data table with response variable first then loop in the explainatory variables
 df <- join[response]
-for(i in 1:nrow(output))
+
+for(i in 1:nrow(output))##for loop
 {
   idx <- join[which(colnames(join)==as.character(output[i,1]))]
   df <- cbind(df, idx)
 }
 
-df <- df %>% filter(!is.na(.[response]))
+df <- df %>% filter(!is.na(.[response]))##remove na's
+
+##combine with join table to bring in LEASE
+df <- bind_cols(join %>% 
+                  filter(!is.na(join[response])) %>% 
+                  select(LEASE), 
+                df)
+##end of data table build=============================================================================
+
+form <- as.formula(paste(response,'~.'))##build formula
 
 highCor <- df %>% #find high cor columns
   na.omit() %>%
@@ -109,14 +125,25 @@ highCor <- df %>% #find high cor columns
 
 #highCor <- names(df[-1][findCorrelation_fast(abs(cor(df[-1])), 0.85)])
 
-##remove multicollinearity columns
-df <- bind_cols(join %>% 
-                  filter(!is.na(join[response])) %>% 
-                  select(LEASE), 
-                df %>%
-                  select_if(is.numeric) %>%
-                  select(-one_of(highCor))) %>%
-  na.omit() %>% droplevels()
+if(multiONOFF == "ON"){
+  
+  ##remove multicollinearity columns
+  df <- bind_cols(join %>% 
+                    filter(!is.na(join[response])) %>% 
+                    select(LEASE), 
+                  df %>%
+                    #select_if(is.numeric) %>%
+                    select(-one_of(highCor))) %>%
+    na.omit() %>% droplevels()
+  
+}else{
+  ##remove multicollinearity columns
+  df <- bind_cols(join %>% 
+                    filter(!is.na(join[response])) %>% 
+                    select(LEASE), 
+                  df) %>%
+    na.omit() %>% droplevels()
+}
 
 attributes(df)$na.action <- NULL #remove attribute from data.table
 df <- df[sapply(df, function(x) length(levels(x)) != 1)] #remove factors that only have 1 level
@@ -125,13 +152,30 @@ df <- df[sapply(df, function(x) length(levels(x)) != 1)] #remove factors that on
 ##split data into train/test===============================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
-trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
+#trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
+trainRow <- createDataPartition(df[[response]],  p = split/100, list = FALSE)
+
 
 RF.Train <- droplevels(df[trainRow, ]) #create train set
 RF.Test <- droplevels(df[-trainRow, ]) #create test set
 
-RF.Train <- RF.Train[sapply(RF.Train, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
-RF.Test <- RF.Test[sapply(RF.Test, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor
+
+##remove factor levels====================================================================
+
+if(level_count(RF.Train)!=0) {#check train table and remove if 1 level
+  
+  RF.Test <- RF.Test[-which(colnames(RF.Train)==colnames(RF.Train[sapply(RF.Test, function(x) length(levels(x)) == 1)]))]
+  RF.Train <- RF.Train[sapply(RF.Train, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor 
+}
+
+
+if(level_count(RF.Test)!=0) {#check test table and remove if 1 level
+  
+  
+  RF.Train <- RF.Train[-which(colnames(RF.Test)==colnames(RF.Test[sapply(RF.Test, function(x) length(levels(x)) == 1)]))]
+  RF.Test <- RF.Test[sapply(RF.Test, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor 
+
+}
 
 
 ##build lm model=============================================================================
@@ -307,7 +351,33 @@ metric
 
 
 
+##feature selection====================================================
+library(party)
+options(StringsAsFactors=TRUE)
 
+data.frame(colnames(join))
+
+#change the name of the Response variable to be R friendly
+colnames(join) <- make.names( colnames(join) )
+well <- df
+#well<-join[,complete.cases(join)]
+wellid<-well[,1]
+well<-well[,-1] ##nice way to create table without your response variable
+well[,1]<-as.factor(well[,1])
+well<-select_if(well, is.numeric)
+
+sapply(well, function(x) sum(is.na(x)))
+
+##ranger package
+mtry <- ceiling(sqrt(ncol(well)))
+
+fCtrl <-  cforest(form, data= well, control=cforest_unbiased(mtry=mtry,ntree=50))
+wello <-data.frame("mean decrease accuracy"=varimp(fCtrl))
+wello<-data.frame(Features= rownames(wello),wello)
+
+colnames<-rownames(wello)
+colnames<-paste(rownames(wello),collapse="],[")
+colnames=paste("[",colnames,"]",sep="")
 
 
 
