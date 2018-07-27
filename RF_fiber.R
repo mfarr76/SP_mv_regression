@@ -1,10 +1,12 @@
 rm(list = ls())
 
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/mv_tables.RData")
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rta_rf.RData")
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
+#load("C:/Users/mfarr/Documents/R_files/Spotfire.data/Join_mv.RData")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/fiber_rf.RData")
+#load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 
-response <- "AcK_mbt_LateTime"
+#response <- "AcK_mbt_LateTime"
+multiONOFF <- "OFF"
+split <- 60
 
 ##install package if it is not already installed========================================
 list.of.packages <- c("dplyr", "tibble")
@@ -25,7 +27,7 @@ library(ranger, warn.conflicts = FALSE)
 library(caret, warn.conflicts = FALSE)
 
 ##input parameters
-join
+Join
 input
 response
 ntree
@@ -72,44 +74,32 @@ level_count <- function(table){
 ##data type cleanup=======================================================================
 
 #change the name of the Response variable to be R friendly
-colnames(join) <- make.names( colnames(join) )
-cols <- colnames(join)
+colnames(Join) <- make.names( colnames(Join) )
+cols <- colnames(Join)
 response <- make.names(response)
 
-#get the columns which are character type and date or date-time type
-types <- sapply(join[,cols],class)
-char.cols <- unlist(names(types[types=='character']))
-datetime.cols <- unlist(names(types[types=='c("POSIXct", "POSIXt")']))
-date.cols <- unlist(names(types[types=='Date']))
-date.cols <- c(datetime.cols,date.cols)
-
-join[,char.cols] <- lapply(join[,char.cols] , factor)
-join[,date.cols] <- lapply(join[,date.cols] , factor)
-
-if("ProdYear" %in% cols) {
-  join$ProdYear <- as.factor(join$ProdYear)
-}
-
-#factor.cols <- unlist(names(types[types=='factor']))
+##remover na's based on response variable and change from char to factor
+Join <- Join %>% filter(!is.na(.[response])) %>%
+  mutate_if(is.character, as.factor)
 
 ##make data table from user input====================================================================
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
 ##create data table with response variable first then loop in the explainatory variables
-df <- join[response]
-
+df <- Join[response]
+i<-1
 for(i in 1:nrow(output))##for loop
 {
-  idx <- join[which(colnames(join)==as.character(output[i,1]))]
+  idx <- Join[which(colnames(Join)==as.character(output[i,1]))]
   df <- cbind(df, idx)
 }
 
 df <- df %>% filter(!is.na(.[response]))##remove na's
 
-##combine with join table to bring in LEASE
-df <- bind_cols(join %>% 
-                  filter(!is.na(join[response])) %>% 
+##combine with Join table to bring in LEASE
+df <- bind_cols(Join %>% 
+                  filter(!is.na(Join[response])) %>% 
                   select(LEASE), 
                 df)
 ##end of data table build=============================================================================
@@ -125,11 +115,12 @@ highCor <- df %>% #find high cor columns
 
 #highCor <- names(df[-1][findCorrelation_fast(abs(cor(df[-1])), 0.85)])
 
+
 if(multiONOFF == "ON"){
   
   ##remove multicollinearity columns
-  df <- bind_cols(join %>% 
-                    filter(!is.na(join[response])) %>% 
+  df <- bind_cols(Join %>% 
+                    filter(!is.na(Join[response])) %>% 
                     select(LEASE), 
                   df %>%
                     #select_if(is.numeric) %>%
@@ -138,8 +129,8 @@ if(multiONOFF == "ON"){
   
 }else{
   ##remove multicollinearity columns
-  df <- bind_cols(join %>% 
-                    filter(!is.na(join[response])) %>% 
+  df <- bind_cols(Join %>% 
+                    filter(!is.na(Join[response])) %>% 
                     select(LEASE), 
                   df) %>%
     na.omit() %>% droplevels()
@@ -178,18 +169,18 @@ if(level_count(RF.Test)!=0) {#check test table and remove if 1 level
 }
 
 
-##build lm model=============================================================================
+##build rf model=============================================================================
 form <- as.formula(paste(response,'~.')) #build formula
 
 
 #obj <- rfsrc(form, data = train[-1],ntree=ntree, importance=TRUE, tree.err=TRUE)
 
 ##ranger package
-mtry <- ceiling(sqrt(ncol(RF.Train[-1])))
+mtry <- ceiling(sqrt(ncol(RF.Train)))
 
 
 set.seed(1234)
-obj <- ranger(form, RF.Train[-1], mtry = mtry, 
+obj <- ranger(form, RF.Train, mtry = mtry, 
               importance = "permutation", num.trees = 1000)
 
 RF.Train$predict <- obj$predictions
@@ -300,26 +291,26 @@ abline(v=mean(test_mean), lwd=3, col="red")
 
 R2(pred_rngr, RF.Test$AcK_mbt_EarlyTime)
 
-objjoin1 <- join %>%
-  filter(!is.na(join[response]))
+objJoin1 <- Join %>%
+  filter(!is.na(Join[response]))
 
-sapply(join1, function(x) sum(is.na(x)))
+sapply(Join1, function(x) sum(is.na(x)))
 
-na_count <- sapply(join1, function(y) sum(is.na(y)))
-(na_percent <- data.frame(na_count)/nrow(join1))
+na_count <- sapply(Join1, function(y) sum(is.na(y)))
+(na_percent <- data.frame(na_count)/nrow(Join1))
 #names(public[,na_percent<0.95])
 #training_remove_sparse_records<-public[,na_percent<0.95]
-join1 <- join1[,na_percent==0]
+Join1 <- Join1[,na_percent==0]
 
-numericVars <- which(sapply(join1, is.numeric)) #index vector numeric variables
-join1_num <- join1[, numericVars]
-join1_num$model_H <- NULL
+numericVars <- which(sapply(Join1, is.numeric)) #index vector numeric variables
+Join1_num <- Join1[, numericVars]
+Join1_num$model_H <- NULL
 
-data.frame(row = cumsum(rep(1, ncol(join1))), class = sapply(join1, class))
+data.frame(row = cumsum(rep(1, ncol(Join1))), class = sapply(Join1, class))
 
 
-(highCor <- names(join1_num[,findCorrelation(abs(cor(join1_num)), 0.8)]))
-correlate <- cor(join1_num, use = "everything", method = "pearson")
+(highCor <- names(Join1_num[,findCorrelation(abs(cor(Join1_num)), 0.8)]))
+correlate <- cor(Join1_num, use = "everything", method = "pearson")
 corrplot(correlate, type = "lower", sig.level = 0.01, insig = "blank")
 
 ##create a for loop to check the distribution of train/test set
@@ -331,17 +322,17 @@ dfname <- c("df", "RF.Train", "RF.Test")
 
 metric <- data.frame()  #create an empty data.frame to hold each loop
 for(i in 1:length(dflist)){
-  dt <- data.frame(dflist[i])
-  dt_tbl <- data.frame(wellcount = nrow(dt))   
-  dt_tbl$mean <- mean(dt[[response]], na.rm = TRUE)   
-  dt_tbl$median <- median(dt[[response]], na.rm = TRUE)
-  dt_tbl$variance <- var(dt[[response]], na.rm = TRUE)
-  dt_tbl$sd <- sd(dt[[response]], na.rm = TRUE)
-  dt_tbl$P10 <- quantile(dt[[response]], probs = (0.90), na.rm = TRUE)
-  dt_tbl$P90 <- quantile(dt[[response]], probs = (0.10), na.rm = TRUE)
+  df <- data.frame(dflist[i])
+  df_tbl <- data.frame(wellcount = nrow(df))   
+  df_tbl$mean <- mean(df[[response]], na.rm = TRUE)   
+  df_tbl$median <- median(df[[response]], na.rm = TRUE)
+  df_tbl$variance <- var(df[[response]], na.rm = TRUE)
+  df_tbl$sd <- sd(df[[response]], na.rm = TRUE)
+  df_tbl$P10 <- quantile(df[[response]], probs = (0.90), na.rm = TRUE)
+  df_tbl$P90 <- quantile(df[[response]], probs = (0.10), na.rm = TRUE)
   #df_tbl$SoPhiH <- mean(df$SoPhiH_LEF, na.rm = TRUE)
   #df_tbl$tvd <- mean(df$TotalDepthTVD, na.rm = TRUE)
-  metric <- rbind(metric, dt_tbl)#store the results of each loop
+  metric <- rbind(metric, df_tbl)#store the results of each loop
   #rownames(metric) <- dfname[i]
   #print(metric)
 }
@@ -355,12 +346,12 @@ metric
 library(party)
 options(StringsAsFactors=TRUE)
 
-data.frame(colnames(join))
+data.frame(colnames(Join))
 
 #change the name of the Response variable to be R friendly
-colnames(join) <- make.names( colnames(join) )
+colnames(Join) <- make.names( colnames(Join) )
 well <- df
-#well<-join[,complete.cases(join)]
+#well<-Join[,complete.cases(Join)]
 wellid<-well[,1]
 well<-well[,-1] ##nice way to create table without your response variable
 well[,1]<-as.factor(well[,1])

@@ -15,17 +15,38 @@ suppressPackageStartupMessages(library(party))
 options(StringsAsFactors=TRUE)
 
 ##input parameters
-input
+var.input
 response
-join
+Join
+
+
+#change the name of the Response variable to be R friendly
+colnames(Join) <- make.names( colnames(Join) )
+cols <- colnames(Join)
+response <- make.names(response)
+
+##remover na's based on response variable and change from char to factor
+Join <- Join %>% filter(!is.na(.[response])) %>%
+  mutate_if(is.character, as.factor)
+
+##make data table from user input====================================================================
+output <- data.frame(strsplit(var.input, ","))
+names(output) <- "MAIN"
+
+##create data table with response variable first then loop in the explainatory variables
+df <- Join[response]
+i<-1
+for(i in 1:nrow(output))##for loop
+{
+  idx <- Join[which(colnames(Join)==as.character(output[i,1]))]
+  df <- cbind(df, idx)
+}
+
+well <- df %>% filter(!is.na(.[response]))##remove na's
 
 
 ##build formula
 form <- as.formula(paste(response,'~.')) 
-
-##remover na's based on response variable and change from char to factor
-well <- FIBER %>% filter(!is.na(.[response])) %>%
-  mutate_if(is.character, as.factor)
 
 ##remove rows with na's
 well <- well[complete.cases(well), ]

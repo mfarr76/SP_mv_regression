@@ -7,9 +7,9 @@ load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 response <- "AcK_mbt_LateTime"
 
 ##install package if it is not already installed========================================
-list.of.packages <- c("dplyr", "tibble")
+list.of.packages <- c("dplyr")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages, repos =  "https://mran.revolutionanalytics.com/snapshot/2017-05-01/")
+if(length(new.packages)) install.packages(new.packages, repos =  "https://mran.revolutionanalytics.com/snapshot/2017-10-01/")
 
 ##load spotfire below===================================================================
 

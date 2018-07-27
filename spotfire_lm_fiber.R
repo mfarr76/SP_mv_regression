@@ -1,8 +1,12 @@
 rm(list = ls())
 
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/Join_mv.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/lm.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 
+#response <- "AcK_mbt_LateTime"
+multiONOFF <- "OFF"
+split <- 60
 
 
 isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
@@ -55,74 +59,63 @@ findCorrelation_fast <- function(x, cutoff = .90, verbose = FALSE){
   deletecol
 }
 
+
+level_count <- function(table){
+  sum(ifelse(sapply(table, function(x) length(levels(x)) != 1) == FALSE, 1, 0))
+}
+
+
+
 ##data type cleanup=======================================================================
 
 #change the name of the Response variable to be R friendly
-colnames(join) <- make.names( colnames(join) )
-cols <- colnames(join)
+colnames(Join) <- make.names( colnames(Join) )
+cols <- colnames(Join)
 response <- make.names(response)
 
-features_na <- colnames(join)[unique(which(is.na(join), arr.ind = TRUE)[,2])]
-features <- colnames(join[,!(colnames(join)%in% c("Uncertainity.Index"))])##exclude a colnames
-features <- features[!(features %in% features_na)]
-target <- response
+##remover na's based on response variable and change from char to factor
+Join <- Join %>% filter(!is.na(.[response])) %>%
+  mutate_if(is.character, as.factor)
 
-
-
-
-#get the columns which are character type and date or date-time type
-types <- sapply(join[,cols],class)
-char.cols <- unlist(names(types[types=='character']))
-datetime.cols <- unlist(names(types[types=='c("POSIXct", "POSIXt")']))
-date.cols <- unlist(names(types[types=='Date']))
-date.cols <- c(datetime.cols,date.cols)
-
-join[,char.cols] <- lapply(join[,char.cols] , character)
-join[,date.cols] <- lapply(join[,date.cols] , factor)
-
-if("ProdYear" %in% cols) {
-  join$ProdYear <- as.factor(join$ProdYear)
-}
-
-
-##make data table from user input========================================================
-
+##make data table from user input====================================================================
 output <- data.frame(strsplit(input, ","))
 names(output) <- "MAIN"
 
-df <- join[response]
-make.names(output[9,1])
-
-for(i in 1:nrow(output))
+##create data table with response variable first then loop in the explainatory variables
+df <- Join[response]
+i<-1
+for(i in 1:nrow(output))##for loop
 {
-  idx <- join[which(colnames(join)== make.names(as.character(output[i,1])))]
+  idx <- Join[which(colnames(Join)==as.character(output[i,1]))]
   df <- cbind(df, idx)
 }
 
-#sapply(df, function(x) sum(is.na(x)))
+df <- df %>% filter(!is.na(.[response]))##remove na's
 
-df <- df %>% filter(!is.na(.[response]))
+##combine with Join table to bring in LEASE
+df <- bind_cols(Join %>% 
+                  filter(!is.na(Join[response])) %>% 
+                  select(LEASE), 
+                df)
+##end of data table build=============================================================================
+
+form <- as.formula(paste(response,'~.'))##build formula
 
 highCor <- df %>% #find high cor columns
   na.omit() %>%
   select(-one_of(response)) %>%
   select_if(is.numeric) %>%
-  select(one_of(names(.[findCorrelation_fast(abs(cor(.)), 0.8)]))) %>%
+  select(one_of(names(.[findCorrelation_fast(abs(cor(.)), 0.85)]))) %>%
   colnames()
-#df2<- df %>%
-#  select_if(is.numeric) %>%
-#  na.omit(.)
 
-#highCor2 <- names(df2[,findCorrelation_fast(abs(cor(df2)), 0.85)])
-#highCor <- names(df[findCorrelation_fast(abs(cor(df)), 0.85)])
+#highCor <- names(df[-1][findCorrelation_fast(abs(cor(df[-1])), 0.85)])
 
-multi.ONOFF <- "ON"
 
-if(multi.ONOFF == "ON"){
+if(multiONOFF == "ON"){
   
   ##remove multicollinearity columns
-  df <- bind_cols(join %>% 
-                    filter(!is.na(join[response])) %>% 
+  df <- bind_cols(Join %>% 
+                    filter(!is.na(Join[response])) %>% 
                     select(LEASE), 
                   df %>%
                     #select_if(is.numeric) %>%
@@ -131,56 +124,64 @@ if(multi.ONOFF == "ON"){
   
 }else{
   ##remove multicollinearity columns
-  df <- bind_cols(join %>% 
-                    filter(!is.na(join[response])) %>% 
+  df <- bind_cols(Join %>% 
+                    filter(!is.na(Join[response])) %>% 
                     select(LEASE), 
                   df) %>%
     na.omit() %>% droplevels()
 }
 
-
-
 attributes(df)$na.action <- NULL #remove attribute from data.table
 df <- df[sapply(df, function(x) length(levels(x)) != 1)] #remove factors that only have 1 level
 
-#highCor2 <- names(df[,findCorrelation_fast(abs(cor(df)), 0.8)])
-#df <- df %>% select(-one_of(highCor2))
-
+df <- df %>% select_if(is.numeric)
 
 ##split data into train/test=================================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
 trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
 
-train <- droplevels(df[trainRow, ]) #create train set
-test <- droplevels(df[-trainRow, ]) #create test set
+LM.Train <- df[trainRow, ]# %>% droplevels() #create train set
+LM.Test <- df[-trainRow, ]# %>% droplevels() #create test set
 
 
+##remove factor levels========================================================================
 
-#write.csv(train, file = "train.csv")
+#if(level_count(LM.Train)!=0) {#check train table and remove if 1 level
+#  
+#  LM.Test <- LM.Test[-which(colnames(LM.Train)==colnames(LM.Train[sapply(LM.Test, function(x) length(levels(x)) == 1)]))]
+#  LM.Train <- LM.Train[sapply(LM.Train, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor 
+#}
+
+
+#if(level_count(LM.Test)!=0) {#check test table and remove if 1 level
+#  
+#  LM.Train <- LM.Train[-which(colnames(LM.Test)==colnames(LM.Test[sapply(LM.Test, function(x) length(levels(x)) == 1)]))]
+#  LM.Test <- LM.Test[sapply(LM.Test, function(x) length(levels(x)) != 1)] #drop explainatory columns with only 1 factor 
+#  
+#}
 
 
 
 ##build lm model=============================================================================
-
 form <- as.formula(paste(response,'~.')) #build formula
-mod <- lm(form, train[-1]) #lm model
+mod <- lm(form, LM.Train) #lm model
 lm.stats <- tidy(mod) #stats from lm model
 aug.stats <- augment(mod) #stats from lm model
-pred.lm <- predict(mod, test[-1])
-
-#length(mod$coefficients) > mod$rank
-
-lm.predict <- test$LEASE
-lm.predict <- cbind(lm.predict, data.frame(actual = test[response], predicted = pred.lm))
-colnames(lm.predict) <- c("LEASE","actual", "predicted")
+pred.lm <- predict(mod, LM.Test) #predict with model
 
 
+
+#lm.predict <- LM.Test$LEASE  #build data.frame for prediction
+lm.predict <- data.frame(actual = LM.Test[response], predicted = pred.lm)
+colnames(lm.predict) <- c("actual", "predicted")
 
 RMSE <- sqrt(mean((lm.predict$predicted - lm.predict$actual)^2, na.rm = TRUE))
 MAE <- mean(abs(lm.predict$predicted - lm.predict$actual), na.rm = TRUE)
 
-error_lm <- data.frame(RMSE, MAE)
+##error table
+lm.error <- data.frame(RMSE, MAE)
+
 
 
 #library(MASS)
