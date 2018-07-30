@@ -1,10 +1,11 @@
 rm(list = ls())
 
 #load("C:/Users/mfarr/Documents/R_files/Spotfire.data/daily_tables.RData")
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rta_rf.RData")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rf_rta.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 
 response <- "AcK_mbt_LateTime"
+split <- 50
 
 ##install package if it is not already installed========================================
 list.of.packages <- c("dplyr")
@@ -73,24 +74,11 @@ level_count <- function(table){
 
 #change the name of the Response variable to be R friendly
 colnames(join) <- make.names( colnames(join) )
-cols <- colnames(join)
 response <- make.names(response)
 
-#get the columns which are character type and date or date-time type
-types <- sapply(join[,cols],class)
-char.cols <- unlist(names(types[types=='character']))
-datetime.cols <- unlist(names(types[types=='c("POSIXct", "POSIXt")']))
-date.cols <- unlist(names(types[types=='Date']))
-date.cols <- c(datetime.cols,date.cols)
-
-join[,char.cols] <- lapply(join[,char.cols] , factor)
-join[,date.cols] <- lapply(join[,date.cols] , factor)
-
-if("ProdYear" %in% cols) {
-  join$ProdYear <- as.factor(join$ProdYear)
-}
-
-#factor.cols <- unlist(names(types[types=='factor']))
+##remover na's based on response variable and change from char to factor
+join <- join %>% filter(!is.na(.[response])) %>%
+  mutate_if(is.character, as.factor)
 
 ##make data table from user input====================================================================
 output <- data.frame(strsplit(input, ","))
@@ -107,14 +95,12 @@ for(i in 1:nrow(output))##for loop
 
 df <- df %>% filter(!is.na(.[response]))##remove na's
 
-##combine with join table to bring in LEASE
 df <- bind_cols(join %>% 
                   filter(!is.na(join[response])) %>% 
                   select(LEASE), 
                 df)
-##end of data table build=============================================================================
 
-form <- as.formula(paste(response,'~.'))##build formula
+##end of data table build==================================================================
 
 highCor <- df %>% #find high cor columns
   na.omit() %>%
@@ -123,44 +109,44 @@ highCor <- df %>% #find high cor columns
   select(one_of(names(.[findCorrelation_fast(abs(cor(.)), 0.85)]))) %>%
   colnames()
 
-#highCor <- names(df[-1][findCorrelation_fast(abs(cor(df[-1])), 0.85)])
 
 if(multiONOFF == "ON"){
   
   ##remove multicollinearity columns
-  df <- bind_cols(join %>% 
-                    filter(!is.na(join[response])) %>% 
-                    select(LEASE), 
-                  df %>%
-                    #select_if(is.numeric) %>%
-                    select(-one_of(highCor))) %>%
+  df <- df %>% 
+    select_if(is.numeric) %>%
+    select(-one_of(highCor)) %>%
     na.omit() %>% droplevels()
   
 }else{
   ##remove multicollinearity columns
-  df <- bind_cols(join %>% 
-                    filter(!is.na(join[response])) %>% 
-                    select(LEASE), 
-                  df) %>%
+  df <- df %>% 
     na.omit() %>% droplevels()
 }
 
 attributes(df)$na.action <- NULL #remove attribute from data.table
 df <- df[sapply(df, function(x) length(levels(x)) != 1)] #remove factors that only have 1 level
 
+##create dummy variables==================================================================
+
+dmy <- dummyVars("~.", data = df[-1])
+trsf <- data.frame(predict(dmy, newdata = df[-1]))
+
+trsf <- bind_cols(df["LEASE"], trsf)
+
 
 ##split data into train/test===============================================================
 set.seed(101) # Set Seed so that same sample can be reproduced in future also
 # Now Selecting 75% of data as sample from total 'n' rows of the data  
 #trainRow <- sample.int(n = nrow(df), size = floor(split/100*nrow(df)), replace = F)
-trainRow <- createDataPartition(df[[response]],  p = split/100, list = FALSE)
+trainRow <- createDataPartition(trsf[[response]],  p = split/100, list = FALSE)
 
 
-RF.Train <- droplevels(df[trainRow, ]) #create train set
-RF.Test <- droplevels(df[-trainRow, ]) #create test set
+RF.Train <- droplevels(trsf[trainRow, ]) #create train set
+RF.Test <- droplevels(trsf[-trainRow, ]) #create test set
 
 
-##remove factor levels====================================================================
+##remove factor levels=====================================================================
 
 if(level_count(RF.Train)!=0) {#check train table and remove if 1 level
   
@@ -178,58 +164,25 @@ if(level_count(RF.Test)!=0) {#check test table and remove if 1 level
 }
 
 
-##build lm model=============================================================================
+##build rf model=============================================================================
 form <- as.formula(paste(response,'~.')) #build formula
 
+obj_ranger <- train(form, RF.Train[-1], method='ranger', 
+                   importance = "permutation", metric = 'RMSE',
+                   na.action = na.omit, num.trees = 100)
 
-#obj <- rfsrc(form, data = train[-1],ntree=ntree, importance=TRUE, tree.err=TRUE)
-
-##ranger package
-mtry <- ceiling(sqrt(ncol(RF.Train[-1])))
-
-
-set.seed(1234)
-obj <- ranger(form, RF.Train[-1], mtry = mtry, 
-              importance = "permutation", num.trees = 1000)
-
-RF.Train$predict <- obj$predictions
-
+RF.Train$predict <- obj_ranger$finalModel$predictions
 
 #create Variable Importance table
-VarImportance<-NULL
-VarImportance<-obj$variable.importance
+VarImportance <- data.frame(varImp(obj_ranger, useModel = TRUE)[1])
+VarImportance <-data.frame(Features= rownames(VarImportance),VarImportance)
 
-if(treeType=="Regression"){
-  VarImportance<-cbind(VarImportance,names(obj$variable.importance))
-  colnames(VarImportance)<-c("Importance","Variable")
-  VarImportance <- as.data.frame(VarImportance,stringsAsFactors=FALSE)
-  VarImportance$Importance <- as.numeric(VarImportance$Importance)
-}else{
-  VarImportance<-cbind(VarImportance,rownames(obj$vaiable.importance))
-  colnames(VarImportance)<-c(colnames(obj$importance),"Variable")
-  VarImportance <- as.data.frame(VarImportance,stringsAsFactors=FALSE)
-  
-  for(c in colnames(obj$importance)){
-    VarImportance[,c] <- as.numeric(VarImportance[,c])
-  }
-}
-
-
-pred_rngr <- predictions(predict(obj, RF.Test[-1], num.trees = 1000))
-RF.Test$predict <- predictions(predict(obj, RF.Test[-1], num.trees = 1000))
-
-
+pred_rngr <- predict(obj_ranger, RF.Test[-1])
+RF.Test$predict <- predict(obj_caret, RF.Test[-1])
 RMSE <- sqrt(mean((RF.Test[[response]] - pred_rngr)^2, na.rm = TRUE))
 MAE <- mean(abs(RF.Test[[response]] - pred_rngr), na.rm = TRUE)
 
 error <- data.frame(RMSE, MAE)
-
-
-#create table with stats for the training data
-Stats <- capture.output(print(obj))
-
-
-
 
 
 TimeStamp=paste(date(),Sys.timezone())
@@ -380,14 +333,13 @@ colnames<-paste(rownames(wello),collapse="],[")
 colnames=paste("[",colnames,"]",sep="")
 
 
+##boruta package
+library(Boruta)
+boruta.train <- Boruta(form, RF.Train, doTrace = 2)
 
-
-
-
-
-
-
-
-
-
+plot(boruta.train, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i) boruta.train$ImpHistory[is.finite(boruta.train$ImpHistory[,i]),i])
+names(lz) <- colnames(boruta.train$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels), at = 1:ncol(boruta.train$ImpHistory), cex.axis = 0.7)
 

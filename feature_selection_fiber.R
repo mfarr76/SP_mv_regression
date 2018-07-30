@@ -72,3 +72,27 @@ TimeStamp=paste(date(),Sys.timezone())
 tdir = 'C:/Users/MFARR/Documents/R_files/Spotfire.data' # place to store diagnostics if it exists (otherwise do nothing)
 if(file.exists(tdir) && file.info(tdir)$isdir) suppressWarnings(try(save(list=ls(), file=paste(tdir,'/feature.RData',sep=''), RFormat=T )))
 
+
+library(caret)
+
+
+dummies <- dummyVars(GasRate5_9MSCFD ~ ., data)
+
+
+head(predict(dummies, data))
+
+data$RockGroup <- as.factor(data$RockGroup)
+rg <- C(data$RockGroup, treatment)
+
+df <- data
+
+lm(df$GasRate5_9MSCFD ~ rg)
+
+C(data$RockGroup)
+
+
+
+
+
+
+
