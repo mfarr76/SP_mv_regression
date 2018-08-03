@@ -20,7 +20,7 @@ install_load <- function (package1, ...)  {
 }
 
 isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
-install_load(c('party', 'dplyr', 'ranger', 'RODBC', 'caret', 'broom'))
+install_load(c('party', 'dplyr', 'ranger', 'RODBC', 'caret', 'broom', 'e1071'))
 
 package <- c('party', 'dplyr', 'ranger', 'RODBC', 'caret', 'broom')
 package %in% rownames(installed.packages())

@@ -5,12 +5,17 @@ load("C:/Users/mfarr/Documents/R_files/Spotfire.data/rf_rta.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/out.RData")
 
 response <- "AcK_mbt_LateTime"
-split <- 50
+split <- 60
+join <- Join
+multiONOFF <- "OFF"
 
 ##install package if it is not already installed========================================
 list.of.packages <- c("dplyr")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages, repos =  "https://mran.revolutionanalytics.com/snapshot/2017-10-01/")
+
+
+install.packages("ggplot2", repos =  "https://mran.revolutionanalytics.com/snapshot/2017-10-01/")
 
 ##load spotfire below===================================================================
 
@@ -24,6 +29,9 @@ library(dplyr, warn.conflicts = FALSE)
 #library('corrplot') # visualisation
 library(ranger, warn.conflicts = FALSE)
 library(caret, warn.conflicts = FALSE)
+#suppressPackageStartupMessages(library(e1071))
+suppressWarnings(library(e1071, warn.conflicts = FALSE))
+
 
 ##input parameters
 join

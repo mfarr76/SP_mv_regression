@@ -1,16 +1,22 @@
 rm(list = ls())
 
-#well <- read.csv("feature.csv")
 
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/mv_tables.RData")
+load("C:/Users/mfarr/Documents/R_files/Spotfire.data/feature_fiber.RData")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/join_mv.RData")
-load("C:/Users/mfarr/Documents/R_files/Spotfire.data/feature.RData")
 
+response <- "CUMGAS_3MO"
+var.input <- input
 
 ##load packages=====================================================================================
 isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
 
 suppressWarnings(library(dplyr, warn.conflicts = FALSE))
-suppressPackageStartupMessages(library(party))
+#suppressPackageStartupMessages(library(party))
+suppressPackageStartupMessages(library(ranger))
+suppressPackageStartupMessages(library(caret))
+#suppressPackageStartupMessages(library(e1071))
+suppressWarnings(library(e1071, warn.conflicts = FALSE))
 
 options(StringsAsFactors=TRUE)
 
@@ -51,18 +57,20 @@ form <- as.formula(paste(response,'~.'))
 ##remove rows with na's
 well <- well[complete.cases(well), ]
 
-
-
-mtry <- ceiling(sqrt(ncol(well)))
+sapply(df, function(x) sum(is.na(x)))
 
 set.seed(1234)
-fCtrl <-  cforest(form, data= well, control=cforest_unbiased(mtry=mtry,ntree=50))
-wello <-data.frame("mean decrease accuracy"=varimp(fCtrl, conditional = TRUE))
-wello<-data.frame(Features= rownames(wello),wello)
+obj_caret <- train(form, data=well, method='ranger', 
+                   importance = "permutation", metric = 'RMSE',
+                   na.action = na.omit, num.trees = 500)
+
+wello <- data.frame("mean decrease accuracy" = varImp(obj_caret, useModel = TRUE)[1])
+wello <- data.frame(Features= rownames(wello),wello)
 
 colnames<-rownames(wello)
 colnames<-paste(rownames(wello),collapse="],[")
 colnames=paste("[",colnames,"]",sep="")
+
 
 
 

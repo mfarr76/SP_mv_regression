@@ -2,7 +2,7 @@ rm(list = ls())
 
 #well <- read.csv("feature.csv")
 load("C:/Users/mfarr/Documents/R_files/Spotfire.data/feature.RData")
-
+response <- "GasEURBCF"
 
 ##load packages=====================================================================================
 isNamespaceLoaded <- function(name) is.element(name, loadedNamespaces())
@@ -36,8 +36,7 @@ form <- as.formula(paste(response,'~.'))
 
 ##remover na's based on response variable and change from char to factor
 well <- join %>% filter(!is.na(.[response])) %>%
-  mutate_if(is.character, as.factor) %>% 
-  filter(TypeCurve == "B")
+  mutate_if(is.character, as.factor) 
 
 ##remove rows with na's
 well <- well[complete.cases(well), ]
